@@ -172,8 +172,26 @@ namespace :spec do
     SpecConfig.instance.print_summary
   end
 
+  # SPEC_ONLY_BUCKETS and SPEC_SKIP_BUCKETS take space-separated bucket
+  # names (see spec:buckets) so CI can split the suite across jobs.
+  # Use the same list for both in two jobs to run every bucket exactly once.
   task ci: [ 'spec:prepare' ] do
-    spec_organizer.run
+    organizer = spec_organizer
+    only = ENV['SPEC_ONLY_BUCKETS'].to_s.split
+    skip = ENV['SPEC_SKIP_BUCKETS'].to_s.split
+    if only.empty? && skip.empty?
+      organizer.run
+    else
+      known = organizer.priority_order.map(&:to_s) + %w[ remaining ]
+      unknown = (only + skip) - known
+      raise "Unknown spec buckets: #{unknown.join(', ')}" unless unknown.empty?
+
+      buckets = organizer.buckets.keys.select do |bucket|
+        name = (bucket || :remaining).to_s
+        (only.empty? || only.include?(name)) && !skip.include?(name)
+      end
+      organizer.run_buckets(*buckets)
+    end
   end
 
   desc 'Show test buckets'

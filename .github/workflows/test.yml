@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    name: "${{matrix.os}} ruby-${{matrix.ruby}} mongodb-${{matrix.mongodb}} ${{matrix.topology}}"
+    name: "${{matrix.os}} ruby-${{matrix.ruby}} mongodb-${{matrix.mongodb}} ${{matrix.topology}}${{ matrix.shard != 'all' && format(' {0}', matrix.shard) || '' }}"
     env:
       CI: true
       TESTOPTS: "-v"
+      SPEC_SHARD_BUCKETS: "spec spec_sdam_integration unit"
     runs-on: ubuntu-22.04
     continue-on-error: true
     strategy:
@@ -20,6 +21,16 @@ jobs:
         ruby: [ "3.2" ]
         mongodb: [ "7.0", "8.0" ]
         topology: [ replica_set, sharded_cluster ]
+        # The replica set suite is the slowest, so it is split into two jobs.
+        # Shard "1" runs SPEC_SHARD_BUCKETS, shard "2" runs everything else.
+        shard: [ all, "1", "2" ]
+        exclude:
+          - topology: replica_set
+            shard: all
+          - topology: sharded_cluster
+            shard: "1"
+          - topology: sharded_cluster
+            shard: "2"
     steps:
     - name: repo checkout
       uses: actions/checkout@v2
@@ -58,3 +69,5 @@ jobs:
       run: bundle exec rake spec:ci
       env:
         MONGODB_URI: ${{ steps.start-mongodb.outputs.cluster-uri }}
+        SPEC_ONLY_BUCKETS: ${{ matrix.shard == '1' && env.SPEC_SHARD_BUCKETS || '' }}
+        SPEC_SKIP_BUCKETS: ${{ matrix.shard == '2' && env.SPEC_SHARD_BUCKETS || '' }}
