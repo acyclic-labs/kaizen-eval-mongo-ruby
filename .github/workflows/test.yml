@@ -7,10 +7,14 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    name: "${{matrix.os}} ruby-${{matrix.ruby}} mongodb-${{matrix.mongodb}} ${{matrix.topology}}"
+    name: "${{matrix.os}} ruby-${{matrix.ruby}} mongodb-${{matrix.mongodb}} ${{matrix.topology}}${{ matrix.shard != 'all' && format(' ({0})', matrix.shard) || '' }}"
     env:
       CI: true
       TESTOPTS: "-v"
+      # Replica set runs take about twice as long as sharded ones, so they
+      # are split across two jobs. The "a" shard runs these buckets and the
+      # "b" shard runs everything else.
+      SHARD_A_BUCKETS: "tx_examples unit_server integration sdam_integration cursor_reaping query_cache"
     runs-on: ubuntu-22.04
     continue-on-error: true
     strategy:
@@ -20,6 +24,14 @@ jobs:
         ruby: [ "3.2" ]
         mongodb: [ "7.0", "8.0" ]
         topology: [ replica_set, sharded_cluster ]
+        shard: [ all, a, b ]
+        exclude:
+          - topology: replica_set
+            shard: all
+          - topology: sharded_cluster
+            shard: a
+          - topology: sharded_cluster
+            shard: b
     steps:
     - name: repo checkout
       uses: actions/checkout@v2
@@ -58,3 +70,5 @@ jobs:
       run: bundle exec rake spec:ci
       env:
         MONGODB_URI: ${{ steps.start-mongodb.outputs.cluster-uri }}
+        SPEC_BUCKETS: ${{ matrix.shard == 'a' && env.SHARD_A_BUCKETS || '' }}
+        SPEC_BUCKETS_EXCLUDE: ${{ matrix.shard == 'b' && env.SHARD_A_BUCKETS || '' }}

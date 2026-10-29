@@ -172,8 +172,22 @@ namespace :spec do
     SpecConfig.instance.print_summary
   end
 
+  # Set SPEC_BUCKETS to a space-separated list of buckets to run only those,
+  # or set SPEC_BUCKETS_EXCLUDE to run every bucket except those. Use
+  # 'remaining' for files that match no classifier. Giving the same list to
+  # both lets CI split the suite across jobs without dropping any files.
   task ci: [ 'spec:prepare' ] do
-    spec_organizer.run
+    organizer = spec_organizer
+    to_buckets = ->(var) { ENV[var].to_s.split.map { |name| name == 'remaining' ? nil : name.to_sym } }
+    included = to_buckets.call('SPEC_BUCKETS')
+    excluded = to_buckets.call('SPEC_BUCKETS_EXCLUDE')
+    if !included.empty?
+      organizer.run_buckets(*included)
+    elsif !excluded.empty?
+      organizer.run_buckets(*(organizer.buckets.keys - excluded))
+    else
+      organizer.run
+    end
   end
 
   desc 'Show test buckets'
